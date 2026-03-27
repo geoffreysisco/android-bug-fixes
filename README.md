@@ -6,7 +6,7 @@
 - Duplicate files appeared in trash through repeated operations
 - Deleted files remained visible until manual refresh
 - Newly created files were not immediately visible in some views
-
+Verified via automated repro harness across repeated cold starts
 ### Root Cause
 - Inconsistent reload logic across drawer views
 - Missing force reload conditions after file operations
@@ -25,7 +25,7 @@
 
 ---
 
-## 2. Sleep Timer Crash (Main Thread DB Access)
+## 2. Sleep Timer Crash Caused by Main Thread DB Access
 
 ### Problem
 - App crashed when opening the Sleep Timer dialog in debug builds
@@ -54,6 +54,57 @@
 - Playback still pauses correctly when timer expires
 - Eliminated main-thread database access in playback getters
 
-- ### Reference
+### Reference
 - Pull Request: https://github.com/AntennaPod/AntennaPod/pull/8366
+
+---
+
+## 3. Out-of-Range Pagination Causing False Network Failure
+
+### Problem
+- App occasionally launched into a false network failure state on initial load
+- No crash; UI showed failure despite successful API responses
+- Issue was non-deterministic and difficult to reproduce
+
+### Root Cause
+- Discover mode selected a random start page using a fixed upper bound
+- API responses returned a lower `totalPages` value than the randomly selected page
+- When the random page exceeded `totalPages`:
+  - API returned an empty result set (200 OK)
+  - App treated it as a valid empty response
+  - Triggered "empty final" state, which surfaced as a network failure
+
+### Fix
+- Added guard after receiving `totalPages`:
+  - Detect when `browseCurrentPage > browseTotalPages`
+  - Re-select a valid random page within bounds
+  - Retry request before entering empty-state logic
+
+```java
+if (browseMode == BrowseMode.DISCOVER_RANDOM
+        && browseTotalPages > 0
+        && browseCurrentPage > browseTotalPages) {
+
+    int maxPage = Math.min(browseTotalPages, DISCOVER_RANDOM_START_PAGE_MAX);
+
+    browseCurrentPage = 1 + random.nextInt(maxPage);
+    loadNextPageBrowse(cb);
+    return;
+}
+```
+
+### Result
+- Eliminated false network failure on startup
+- App reliably recovers from out-of-range pagination
+- Verified via automated repro harness across repeated cold starts
+
+### Notes
+- Built a shell script to repeatedly reinstall, launch, and capture logs
+- Confirmed fix by observing:
+  - out-of-range page detection
+  - successful retry
+  - valid data publication to UI
+
+### Reference
+- Repository: https://github.com/geoffreysisco/FilmAtlas
 

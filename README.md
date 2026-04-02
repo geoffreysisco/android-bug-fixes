@@ -33,12 +33,22 @@ Verified via automated repro harness across repeated cold starts
 - Dialog attempted to read playback timing during UI refresh
 
 ### Root Cause
-- `SleepTimerDialog.refreshUiState()` called:
+- `SleepTimerDialog.refreshUiState()` depends on playback timing data:
   - `getDuration()`
   - `getPosition()`
-- These methods fell back to `getMedia()`
-- `getMedia()` lazily loaded media using a database call
-- This triggered disk I/O on the main thread
+
+- At dialog startup:
+  - `currentMedia` is loaded asynchronously via `Single.fromCallable(...)` (IO thread)
+  - `refreshUiState()` may run before this completes
+
+- When `currentMedia` is not yet available:
+  - Logic falls back to playback/controller methods
+  - These methods can trigger `getMedia()`
+  - `getMedia()` performs a database read
+
+- This results in **unexpected disk I/O on the main thread**
+
+> Key issue: a race between async media loading and synchronous UI access caused a fallback path that performed hidden database I/O
 
 ### Fix
 - Removed lazy DB access from:

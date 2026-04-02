@@ -117,4 +117,4 @@ if (browseMode == BrowseMode.DISCOVER_RANDOM
 
 ### Reference
 - Repository: https://github.com/geoffreysisco/FilmAtlas
-
+- Fix commit: https://github.com/geoffreysisco/FilmAtlas/commit/426f086c8f75865b9c26ac8368a8e73002b86b44

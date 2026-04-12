@@ -1,27 +1,35 @@
 # Android Bug Fix Case Studies
 
+This repository contains real-world Android bug fixes across production apps and personal projects.
+
+Each case study documents the problem, root cause, and minimal fix used to resolve the issue.
+
+---
+
 ## 1. Duplicate Files + Stale UI in File Manager
 
 ### Problem
 - Duplicate files appeared in trash through repeated operations
 - Deleted files remained visible until manual refresh
 - Newly created files were not immediately visible in some views
-Verified via automated repro harness across repeated cold starts
+- Verified via automated repro across repeated cold starts
+
 ### Root Cause
-- Inconsistent reload logic across drawer views
-- Missing force reload conditions after file operations
+- Custom drawer categories (`OpenMode.CUSTOM`) reused stale datasets instead of forcing reload after file operations
+- MediaStore queries did not consistently exclude trash paths, allowing deleted items to reappear
 
 ### Fix
-- Unified reload behavior using a shared `shouldForceReload` condition
-- Applied fix across Documents, Recent Files, and APK views
-
+- Forced reload for `OpenMode.CUSTOM` views when re-entering or after file operations
+- Moved trash exclusion into MediaStore query selection (`DATA NOT LIKE ?`)
+- Applied fix across Documents, Recent Files, APKs, and other category views
+ 
 ### Result
 - No duplicate files
 - UI reflects actual filesystem state
 - Consistent behavior across all views
 
 ### Reference
-- Pull Request: https://github.com/TeamAmaze/AmazeFileManager/pull/4589
+- PR: https://github.com/TeamAmaze/AmazeFileManager/pull/4589
 
 ---
 
@@ -51,21 +59,19 @@ Verified via automated repro harness across repeated cold starts
 > Key issue: a race between async media loading and synchronous UI access caused a fallback path that performed hidden database I/O
 
 ### Fix
-- Removed lazy DB access from:
-  - `getDuration()`
-  - `getPosition()`
-- Updated logic to return:
+- Avoided fallback path that triggered lazy DB access in playback getters
+- Updated dialog to use:
   - playback service values (if available)
-  - cached media values (if already loaded)
-  - `Playable.INVALID_TIME` otherwise
+  - asynchronously loaded `currentMedia`
+  - `Playable.INVALID_TIME` as a safe fallback
 
 ### Result
 - No crash when opening Sleep Timer dialog
 - Playback still pauses correctly when timer expires
-- Eliminated main-thread database access in playback getters
+- Removed main-thread database access from the Sleep Timer dialog path
 
 ### Reference
-- Pull Request: https://github.com/AntennaPod/AntennaPod/pull/8366
+- PR: https://github.com/AntennaPod/AntennaPod/pull/8366
 
 ---
 
@@ -74,14 +80,14 @@ Verified via automated repro harness across repeated cold starts
 ### Problem
 - App occasionally launched into a false network failure state on initial load
 - No crash; UI showed failure despite successful API responses
-- Issue was non-deterministic and difficult to reproduce
+- Non-deterministic behavior made the issue difficult to reproduce
 
 ### Root Cause
 - Discover mode selected a random start page using a fixed upper bound
 - API responses returned a lower `totalPages` value than the randomly selected page
 - When the random page exceeded `totalPages`:
   - API returned an empty result set (200 OK)
-  - App treated it as a valid empty response
+  - App treated it as a valid empty result instead of an out-of-range condition
   - Triggered "empty final" state, which surfaced as a network failure
 
 ### Fix
@@ -109,7 +115,7 @@ if (browseMode == BrowseMode.DISCOVER_RANDOM
 - Verified via automated repro harness across repeated cold starts
 
 ### Notes
-- Built a shell script to repeatedly reinstall, launch, and capture logs
+- Built a shell-based repro harness to repeatedly reinstall, launch, and capture logs
 - Confirmed fix by observing:
   - out-of-range page detection
   - successful retry
